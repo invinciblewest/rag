@@ -157,3 +157,66 @@
 > *Kael Dorn, born Aegon Ashveil, is the son of Kira Dorn and Rhaegar Ashveil, the late Prince of Ashveil Isle. From infancy, Kael is presented as the bastard son of Lord Eddran Dorn...*
 
 Ни один из оригинальных терминов (Jon Snow, Targaryen, Stark, Winterfell, Dragonstone) в базе не фигурирует. LLM не сможет ответить "по памяти" на вопросы об этой вселенной.
+
+---
+
+## Задание 3. Создание векторного индекса
+
+### Модель эмбеддингов
+
+| Параметр              | Значение                                                                                                                                                            |
+|-----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Название**          | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`                                                                                                       |
+| **Репозиторий**       | https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2                                                                                  |
+| **Размер эмбеддинга** | 384                                                                                                                                                                 |
+| **Устройство**        | CPU (normalize_embeddings=True)                                                                                                                                     |
+| **Причина выбора**    | Поддерживает 50+ языков включая русский - пользователи могут задавать вопросы на русском, а документы в базе на английском. Размер ~470 MB, работает на CPU без GPU |
+
+---
+
+### Параметры разбивки на чанки
+
+| Параметр        | Значение                                     | Обоснование                                    |
+|-----------------|----------------------------------------------|------------------------------------------------|
+| `chunk_size`    | 800 символов (~150-200 слов)                 | Вмещает один связный абзац, не теряет контекст |
+| `chunk_overlap` | 100 символов                                 | Сохраняет контекст на границах чанков          |
+| `separators`    | `["\n\n", "\n", ". ", " ", ""]`              | Приоритет абзацам, затем предложениям          |
+| Сплиттер        | `RecursiveCharacterTextSplitter` (LangChain) | Рекурсивно ищет лучшее место для разреза       |
+
+**Итог:** из 41 документа (~340 000 символов) получено **~480–520 чанков**.
+
+Метаданные каждого чанка: `source` (имя файла), `title` (название статьи), `chunk_id` (порядковый номер в документе) - используются при цитировании ответов.
+
+---
+
+### Векторная база и сохранение индекса
+
+- **Библиотека:** `FAISS` (faiss-cpu) через `langchain_community.vectorstores.FAISS`
+- **Метод:** `FAISS.from_documents(chunks, embeddings)` - батчевая индексация
+- **Сохранение:** `vectorstore.save_local("faiss_store/")` → файлы `index.faiss` и `index.pkl`
+- **Загрузка в bot.py:** `FAISS.load_local("faiss_store/", embeddings, allow_dangerous_deserialization=True)`
+
+---
+
+### Результаты тестового поиска (top-2 чанка)
+**Q: Who is Kael Dorn and what is his true origin?**
+- **[House_Stark.txt / chunk 29]** Kael Dorn; her son. Born Prince Aegon Ashveil, called "the White Wolf." Raised by Eddran Dorn as his own, claiming K...  
+- **[Winterfell.txt / chunk 13]** Kael Dorn - son of Kira Dorn and Rhaegar Ashveil, publicly known as Eddran Dorn's illegitimate son, who served as th...
+
+**Q: What is the Stone Throne and who rules from it?**  
+- **[Iron_Throne.txt / chunk 0]** commissioned by King Caryn.]]  The Stone Throne was the throne upon which the King of the Andals and the Rhoynar and the...  
+- **[Iron_Throne.txt / chunk 1]** The Stone Throne was forged at the order of Aegon the Conqueror, the first of the Ashveil Kings, who conquered six of th...
+
+**Q: Кто такой Каэль Дорн?**  
+- **[Winterfell.txt / chunk 13]** Kael Dorn - son of Kira Dorn and Rhaegar Ashveil, publicly known as Eddran Dorn's illegitimate son, who served as th...  
+- **[Nights_Watch.txt / chunk 38]** Kael Dorn, High Warden of the Veil Guard following his exile back to the Wall. * {Eddison Tollett}, most often called...
+
+**Q: Что такое Каменный Трон?**  
+- **[Iron_Throne.txt / chunk 0]** commissioned by King Caryn.]]  The Stone Throne was the throne upon which the King of the Andals and the Rhoynar and the...  
+- **[Dragonglass.txt / chunk 18]** Apart from its effectiveness against Frost Wraiths and its use in magic, dragonglass is identical to real-world obsidian...
+
+**Q: Расскажи о Страже Вуали и их обязанностях**  
+- **[Nights_Watch.txt / chunk 35]** Notable members  Recent High Wardens   - the late former High Warden of the Veil Guard.]]'s forces marching North of the...  
+- **[Nights_Watch.txt / chunk 24]** Stewards - who provide for the day-to-day needs of the Watch: gathering, cooking, and serving food, repairing clothes a...    
+
+Поиск возвращает осмысленные чанки по всем тестовым запросам.

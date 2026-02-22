@@ -1,0 +1,17 @@
+services:
+  scrape:
+    build: .
+    volumes:
+      - ./knowledge_base_raw:/app/knowledge_base_raw
+    command: python scripts/scrape.py
+    stdin_open: true
+    tty: true
+  replace_terms:
+    build: .
+    volumes:
+      - ./knowledge_base_raw:/app/knowledge_base_raw
+      - ./knowledge_base:/app/knowledge_base
+    command: python scripts/replace_terms.py
+    stdin_open: true
+    tty: true
+

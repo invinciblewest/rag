@@ -92,10 +92,68 @@
 | **LLM**          | OpenAI GPT-4o-mini (API)                                      |
 | **Эмбеддинги**   | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
 | **Векторная БД** | FAISS                                                         |
-| **Запуск**       | Локально (`python script.py`), venv                           |
+| **Запуск**       | Локально (`docker compose`)                                   |
 
 **Обоснование:**
 1. OpenAI GPT-4o-mini - высокое качество при низкой стоимости (~$0.15/1M токенов), простая интеграция.
 2. Мультиязычные эмбеддинги - пользователи могут задавать вопросы на русском, документы в базе на английском.
 3. FAISS проще ChromaDB для однократной индексации фиксированного корпуса документов.
 4. Локальный запуск без Docker - меньше инфраструктурного оверхеда для разработки.
+
+--- 
+## Задание 2. Подготовка базы знаний
+
+### Выбранная предметная область
+
+**Вселенная:** Game of Thrones (gameofthrones.fandom.com)
+**Причина выбора:** богатый, хорошо структурированный фандом; 30+ страниц по персонажам, локациям, организациям и концепциям; LLM хорошо знает оригинал - это позволяет честно проверить работу RAG после подмены терминов.
+
+Оригинальная вселенная переименована во **вселенную Valdros** (аналог Westeros/Essos).
+
+---
+
+### Скачивание и очистка текстов (`docker compose up scrape`)
+
+Скрипт обращается к MediaWiki API (`action=parse&prop=wikitext`) и очищает wikitext:
+
+- удаляет `<ref>`, HTML-комментарии, внешние ссылки
+- убирает шаблоны `{{...}}` (6 итераций для вложенных)
+- разворачивает викиссылки `[[Link|text]]` > `text`
+- удаляет табличную разметку и HTML-теги
+
+Итог: **41 файл** в `knowledge_base_raw`, охватывающих:
+- 21 персонажа
+- 8 локаций
+- 5 домов и фракций
+- 7 концепций и объектов
+
+---
+
+### Замена ключевых терминов (`docker compose up replace_terms`)
+
+**Словарь `terms_map.json`** содержит 209 замен, организованных по категориям:
+
+| Категория                | Примеры замен                                                              |
+|--------------------------|----------------------------------------------------------------------------|
+| Персонажи (полные имена) | Jon Snow > Kael Dorn, Daenerys Targaryen > Lyra Ashveil                    |
+| Псевдонимы               | The Hound > The Stonehound, Littlefinger > Silvertongue                    |
+| Дома                     | House Stark > House Dorn, House Lannister > House Greyfel                  |
+| Фамилии (одиночные)      | Stark > Dorn, Lannister > Greyfel, Targaryen > Ashveil                     |
+| Локации                  | Winterfell > Frosthaven, The Wall > The Veil, Braavos > Silverhaven        |
+| Объекты                  | Iron Throne > Stone Throne, Valyrian steel > Embersteel                    |
+| Фракции                  | Night's Watch > Veil Guard, Dothraki > Kolvari, Wildlings > Freeborn Clans |
+| Религия и магия          | Lord of Light > Lord of Radiance, White Walker > Frost Wraith              |
+
+**Логика замены:** термины сортируются по убыванию длины, чтобы «House Stark» заменялось раньше «Stark» - иначе возникли бы частичные совпадения.
+
+**Результат:** 41 файл в `knowledge_base/` - те же документы, но без единого упоминания оригинальных терминов GoT.
+
+---
+
+### Проверка уникальности базы
+
+Пример фрагмента из `knowledge_base/Jon_Snow.txt`:
+
+> *Kael Dorn, born Aegon Ashveil, is the son of Kira Dorn and Rhaegar Ashveil, the late Prince of Ashveil Isle. From infancy, Kael is presented as the bastard son of Lord Eddran Dorn...*
+
+Ни один из оригинальных терминов (Jon Snow, Targaryen, Stark, Winterfell, Dragonstone) в базе не фигурирует. LLM не сможет ответить "по памяти" на вопросы об этой вселенной.

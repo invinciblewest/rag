@@ -19,7 +19,18 @@ services:
     volumes:
       - ./knowledge_base:/app/knowledge_base
       - ./faiss_store:/app/faiss_store
+      - huggingface_cache:/root/.cache/huggingface
     command: python scripts/build_index.py
     stdin_open: true
     tty: true
+  bot: # Бот, запускать нужно через docker compose --remove-orphans run
+    build: .
+    volumes:
+      - ./faiss_store:/app/faiss_store
+      - huggingface_cache:/root/.cache/huggingface
+    command: python scripts/bot.py
+    stdin_open: true
+    tty: true
+volumes:
+  huggingface_cache:
 

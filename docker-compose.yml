@@ -1,0 +1,36 @@
+services:
+  scrape: # Запускается в первую очередь для сбора данных
+    build: .
+    volumes:
+      - ./knowledge_base_raw:/app/knowledge_base_raw
+    command: python scripts/scrape.py
+    stdin_open: true
+    tty: true
+  replace_terms: # Запускается после scrape для замены ключевых терминов
+    build: .
+    volumes:
+      - ./knowledge_base_raw:/app/knowledge_base_raw
+      - ./knowledge_base:/app/knowledge_base
+    command: python scripts/replace_terms.py
+    stdin_open: true
+    tty: true
+  build_index: # Запускается после replace_terms для замены ключевых терминов
+    build: .
+    volumes:
+      - ./knowledge_base:/app/knowledge_base
+      - ./faiss_store:/app/faiss_store
+      - huggingface_cache:/root/.cache/huggingface
+    command: python scripts/build_index.py
+    stdin_open: true
+    tty: true
+  bot: # Бот, запускать нужно через docker compose --remove-orphans run
+    build: .
+    volumes:
+      - ./faiss_store:/app/faiss_store
+      - huggingface_cache:/root/.cache/huggingface
+    command: python scripts/bot.py
+    stdin_open: true
+    tty: true
+volumes:
+  huggingface_cache:
+
